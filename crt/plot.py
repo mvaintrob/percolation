@@ -2,7 +2,8 @@
 plot.py — Plot an embedded tree in 2D.
 
 Uses first two coordinates of the embedding (pads if d=1).
-Colors nodes and edges by log descendant mass.
+Colors edges by descendant mass. Internal nodes sized by mass.
+Root is bright red and larger.
 """
 
 import torch
@@ -32,6 +33,7 @@ def plot_tree(tree, positions=None, d=None,
     masses = tree["masses"]
     k = len(masses)
     n_nodes = 2 * k - 1
+    root = n_nodes - 1
     parent = tree["parent"]
     merge_pairs = tree["merge_pairs"]
 
@@ -53,9 +55,7 @@ def plot_tree(tree, positions=None, d=None,
         b = merge_pairs[step, 1].item()
         desc_mass[j] = desc_mass[a] + desc_mass[b]
 
-    log_mass = torch.log(desc_mass).numpy()
-
-    # Color map: blue (light) to red (heavy), log-scaled actual mass
+    # Color map: YlOrRd, log-scaled actual mass
     mass_min = desc_mass[desc_mass > 0].min().item()
     mass_max = desc_mass.max().item()
     norm = mcolors.LogNorm(vmin=mass_min, vmax=mass_max)
@@ -80,10 +80,18 @@ def plot_tree(tree, positions=None, d=None,
     DOT_COLOR = '#333333'
     max_mass = desc_mass.max().item()
     for j in range(k, n_nodes):
+        if j == root:
+            continue  # draw root separately
         m = desc_mass[j].item()
-        size = 2.5 + 25 * (m / max_mass) ** 0.5 if max_mass > 0 else 5
+        size = 5 + 50 * (m / max_mass) ** 0.5 if max_mass > 0 else 10
         ax.scatter(xy[j, 0], xy[j, 1], c=DOT_COLOR,
                    s=size, zorder=3, edgecolors='none', alpha=0.7)
+
+    # Draw root (bright red, larger)
+    root_size = 80 + 50 * 1.0  # always max relative size
+    ax.scatter(xy[root, 0], xy[root, 1], c='red',
+               s=root_size, zorder=5, edgecolors='darkred',
+               linewidths=0.8, alpha=0.9)
 
     # Draw leaves (small hollow circles, uniform color)
     for j in range(k):

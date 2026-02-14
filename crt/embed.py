@@ -85,7 +85,8 @@ def project_2d(positions, k):
 
     If d == 2: return as-is.
     If d == 1: pad with zeros.
-    If d > 2: PCA on leaf positions, project all nodes.
+    If d > 2: SVD on leaf positions (no centering, keeps origin at 0),
+              project all nodes onto top 2 singular vectors.
 
     Args:
         positions: (n_nodes, d) tensor
@@ -104,17 +105,16 @@ def project_2d(positions, k):
         xy[:, 0] = positions[:, 0]
         return xy
 
-    # PCA on leaf positions only
+    # PCA directions from centered leaf data, but project uncentered
+    # (so origin maps to origin)
     leaf_pos = positions[:k]  # (k, d)
     leaf_centered = leaf_pos - leaf_pos.mean(dim=0, keepdim=True)
 
-    # SVD to get top 2 PCs
+    # SVD of centered data to get PC directions
     U, S, Vh = torch.linalg.svd(leaf_centered, full_matrices=False)
-    # Vh[0] and Vh[1] are the top two PC directions
-    pcs = Vh[:2]  # (2, d)
+    pcs = Vh[:2]  # (2, d) — top 2 principal directions
 
-    # Project all nodes
-    all_centered = positions - leaf_pos.mean(dim=0, keepdim=True)
-    projected = all_centered @ pcs.T  # (n_nodes, 2)
+    # Project all nodes WITHOUT centering
+    projected = positions @ pcs.T  # (n_nodes, 2)
 
     return projected

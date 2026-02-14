@@ -87,6 +87,7 @@ def plot_contraction_sequence(tree, positions, output_dir="frames",
     masses = tree["masses"]
     k = len(masses)
     n_nodes = 2 * k - 1
+    root = n_nodes - 1
     parent = tree["parent"]
     merge_pairs = tree["merge_pairs"]
     edge_lengths = tree["edge_lengths"]
@@ -121,8 +122,7 @@ def plot_contraction_sequence(tree, positions, output_dir="frames",
         b = merge_pairs[step, 1].item()
         desc_mass[j] = desc_mass[a] + desc_mass[b]
 
-    # Color scale: blue (light) to red (heavy), log-scaled with
-    # actual mass values on the colorbar.
+    # Color scale: YlOrRd, log-scaled with actual mass values
     mass_min = desc_mass[desc_mass > 0].min().item()
     mass_max = desc_mass.max().item()
     norm = mcolors.LogNorm(vmin=mass_min, vmax=mass_max)
@@ -210,6 +210,9 @@ def plot_contraction_sequence(tree, positions, output_dir="frames",
 
         edges = list(edges)
 
+        # Find the root contracted node (rep of the actual root)
+        root_rep = rep[root]
+
         # ── Plot ──────────────────────────────────────
 
         fig, ax = plt.subplots(1, 1, figsize=figsize)
@@ -237,11 +240,21 @@ def plot_contraction_sequence(tree, positions, output_dir="frames",
         for r in contracted_nodes:
             if r < k:
                 continue
+            if r == root_rep:
+                continue  # draw root separately
             xy = contracted_xy[r]
             m = contracted_mass[r]
-            size = 2.5 + 25 * (m / max_mass) ** 0.5 if max_mass > 0 else 5
+            size = 5 + 50 * (m / max_mass) ** 0.5 if max_mass > 0 else 10
             ax.scatter(xy[0], xy[1], c=DOT_COLOR, s=size, zorder=3,
                        edgecolors='none', alpha=0.7)
+
+        # Root node (bright red, larger)
+        if root_rep in contracted_xy:
+            xy_root = contracted_xy[root_rep]
+            root_size = 80 + 50 * 1.0
+            ax.scatter(xy_root[0], xy_root[1], c='red',
+                       s=root_size, zorder=5, edgecolors='darkred',
+                       linewidths=0.8, alpha=0.9)
 
         # Leaves (small hollow circles)
         for i in range(k):
