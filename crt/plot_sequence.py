@@ -126,7 +126,7 @@ def plot_contraction_sequence(tree, positions, output_dir="frames",
     mass_min = desc_mass[desc_mass > 0].min().item()
     mass_max = desc_mass.max().item()
     norm = mcolors.LogNorm(vmin=mass_min, vmax=mass_max)
-    cmap = plt.cm.coolwarm
+    cmap = plt.cm.YlOrRd
 
     # Generate frames
     os.makedirs(output_dir, exist_ok=True)

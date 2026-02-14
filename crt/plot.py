@@ -59,7 +59,7 @@ def plot_tree(tree, positions=None, d=None,
     mass_min = desc_mass[desc_mass > 0].min().item()
     mass_max = desc_mass.max().item()
     norm = mcolors.LogNorm(vmin=mass_min, vmax=mass_max)
-    cmap = plt.cm.coolwarm
+    cmap = plt.cm.YlOrRd
 
     # Create figure
     fig, ax = plt.subplots(1, 1, figsize=figsize)
