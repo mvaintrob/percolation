@@ -1,0 +1,9 @@
+{
+  "k": 30,
+  "d": 11,
+  "seed": 7,
+  "embed": true,
+  "edge_order": "length",
+  "centroid_mode": "path",
+  "gif": true
+}

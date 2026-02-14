@@ -1,0 +1,9 @@
+{
+  "k": 500,
+  "d": 100,
+  "seed": 999,
+  "embed": true,
+  "edge_order": "merge",
+  "centroid_mode": "leaf",
+  "gif": false
+}
