@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 experiments/
+configs_local/
 frames/
 *.egg-info/
 .venv/

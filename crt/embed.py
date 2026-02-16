@@ -37,45 +37,31 @@ def embed_tree(tree, d):
     k = len(masses)
     n_nodes = 2 * k - 1
     parent = tree["parent"]
-
-    # edge_lengths has size n_nodes - 1 (no edge for root)
-    edge_lengths = tree["edge_lengths"]
+    edge_lengths = tree["edge_lengths"]  # (n_nodes - 1,)
 
     positions = torch.zeros((n_nodes, d), dtype=torch.float64)
-    # Root = node 2k-2, at origin
-
-    # Process nodes top-down: root first, then in reverse merge order
-    # Parent of node j is parent[j]. Root has parent -1.
-    # Internal nodes are k..2k-2 in merge order.
-    # We need to process parents before children.
-
-    # Build processing order: BFS from root
     root = n_nodes - 1
-    order = [root]
-    children_map = {i: [] for i in range(n_nodes)}
-    for j in range(n_nodes - 1):
+
+    # Generate all displacements at once: (n_nodes-1, d)
+    noise = torch.randn(n_nodes - 1, d, dtype=torch.float64)
+    # Scale by sqrt(edge_length): broadcast (n_nodes-1, 1)
+    scales = edge_lengths.clamp(min=0).sqrt().unsqueeze(1)
+    displacements = noise * scales  # (n_nodes-1, d)
+
+    # Process in topological order (parents before children).
+    # Internal nodes k..2k-2 are in merge order, so node k+s is
+    # created at step s. Its children were created earlier.
+    # Process order: root (2k-2), then internal nodes in reverse
+    # (2k-3 down to k), then leaves (0..k-1).
+    # But actually we just need: for each node, its parent is
+    # already placed. The tree is indexed so that parent[j] > j
+    # for all non-root j (parent is always a later internal node).
+    # So processing in reverse order (2k-3 down to 0) works:
+    # when we process j, parent[j] > j is already done.
+
+    for j in range(n_nodes - 2, -1, -1):
         p = parent[j].item()
-        if p >= 0:
-            children_map[p].append(j)
-
-    head = 0
-    while head < len(order):
-        node = order[head]
-        for c in children_map[node]:
-            order.append(c)
-        head += 1
-
-    # Assign positions top-down
-    for node in order:
-        if node == root:
-            continue  # root stays at origin
-        p = parent[node].item()
-        ell = edge_lengths[node].item()
-        if ell > 0:
-            displacement = torch.randn(d, dtype=torch.float64) * (ell ** 0.5)
-        else:
-            displacement = torch.zeros(d, dtype=torch.float64)
-        positions[node] = positions[p] + displacement
+        positions[j] = positions[p] + displacements[j]
 
     return positions
 
@@ -118,3 +104,95 @@ def project_2d(positions, k):
     projected = positions @ pcs.T  # (n_nodes, 2)
 
     return projected
+
+
+def project_2d_tsne(positions, k, perplexity=30.0):
+    """Project node positions to 2D using t-SNE on leaves.
+
+    Runs t-SNE on leaf positions, then places internal nodes
+    at the average of their children's t-SNE coordinates (via
+    the tree structure, if available) or by projecting with
+    a learned linear map.
+
+    Falls back to PCA if sklearn is not available.
+
+    Args:
+        positions: (n_nodes, d) tensor
+        k: number of leaves (nodes 0..k-1)
+        perplexity: t-SNE perplexity parameter
+
+    Returns:
+        (n_nodes, 2) tensor
+    """
+    try:
+        from sklearn.manifold import TSNE
+    except ImportError:
+        print("sklearn not available for t-SNE, falling back to PCA")
+        return project_2d(positions, k)
+
+    n_nodes = positions.shape[0]
+    leaf_pos = positions[:k].numpy()
+
+    # Run t-SNE on leaves
+    perp = min(perplexity, max(5.0, k / 4.0))  # clamp for small k
+    tsne = TSNE(n_components=2, perplexity=perp, random_state=42)
+    leaf_2d = tsne.fit_transform(leaf_pos)
+
+    # For internal nodes: fit a linear map from d-dim to 2D
+    # using the leaf correspondences, then apply to all nodes.
+    # This is a least-squares fit: leaf_2d ≈ leaf_pos @ W
+    leaf_pos_t = torch.as_tensor(leaf_pos, dtype=torch.float64)
+    leaf_2d_t = torch.as_tensor(leaf_2d, dtype=torch.float64)
+    W = torch.linalg.lstsq(leaf_pos_t, leaf_2d_t).solution  # (d, 2)
+
+    # Project all nodes
+    all_2d = positions.double() @ W
+
+    # Override leaf positions with exact t-SNE output
+    all_2d[:k] = leaf_2d_t
+
+    return all_2d
+
+
+def project_2d_umap(positions, k, n_neighbors=15, min_dist=0.1):
+    """Project node positions to 2D using UMAP on leaves.
+
+    Runs UMAP on leaf positions, then places internal nodes
+    via a least-squares linear map fit on the leaf correspondences.
+
+    Falls back to PCA if umap-learn is not available.
+
+    Args:
+        positions: (n_nodes, d) tensor
+        k: number of leaves (nodes 0..k-1)
+        n_neighbors: UMAP n_neighbors parameter
+        min_dist: UMAP min_dist parameter
+
+    Returns:
+        (n_nodes, 2) tensor
+    """
+    try:
+        from umap import UMAP
+    except ImportError:
+        print("umap-learn not available, falling back to PCA. "
+              "Install with: pip install umap-learn")
+        return project_2d(positions, k)
+
+    n_nodes = positions.shape[0]
+    leaf_pos = positions[:k].numpy()
+
+    # Clamp n_neighbors for small k
+    nn = min(n_neighbors, max(2, k - 1))
+    reducer = UMAP(n_components=2, n_neighbors=nn,
+                   min_dist=min_dist, random_state=42)
+    leaf_2d = reducer.fit_transform(leaf_pos)
+
+    # Least-squares linear map for internal nodes
+    leaf_pos_t = torch.as_tensor(leaf_pos, dtype=torch.float64)
+    leaf_2d_t = torch.as_tensor(leaf_2d, dtype=torch.float64)
+    W = torch.linalg.lstsq(leaf_pos_t, leaf_2d_t).solution
+
+    all_2d = positions.double() @ W
+    all_2d[:k] = leaf_2d_t
+
+    return all_2d

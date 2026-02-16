@@ -43,6 +43,9 @@ def parse_args(args):
         "config": None,
         "edge_order": "merge",
         "centroid_mode": "path",
+        "tsne": False,
+        "umap": False,
+        "leaves_only": False,
     }
 
     # First pass: find --config and load it
@@ -71,6 +74,12 @@ def parse_args(args):
             opts["embed"] = True
         elif a == "--gif":
             opts["gif"] = True
+        elif a == "--tsne":
+            opts["tsne"] = True
+        elif a == "--umap":
+            opts["umap"] = True
+        elif a == "--leaves-only":
+            opts["leaves_only"] = True
         elif a == "--config":
             i += 1  # already handled
         elif a == "--save":
@@ -153,7 +162,16 @@ def do_plot(opts):
     positions = embed_tree(t, d)
 
     save_path = opts["save"] if isinstance(opts["save"], str) else None
-    plot_tree(t, positions=positions, save=save_path)
+    proj = None
+    if opts["tsne"]:
+        from crt.embed import project_2d_tsne
+        proj = project_2d_tsne(positions, k)
+    elif opts["umap"]:
+        from crt.embed import project_2d_umap
+        proj = project_2d_umap(positions, k)
+
+    plot_tree(t, positions=positions, save=save_path,
+              _projected=proj, leaves_only=opts["leaves_only"])
 
 
 def do_sequence(opts):
